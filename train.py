@@ -20,6 +20,10 @@ from utils import plot_spectrogram, scan_checkpoint, load_checkpoint, save_check
 
 torch.backends.cudnn.benchmark = True
 
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning) 
+warnings.filterwarnings("ignore", category=UserWarning)
+
 
 def train(rank, a, h):
     if h.num_gpus > 1:
@@ -73,7 +77,7 @@ def train(rank, a, h):
 
     training_filelist, validation_filelist = get_dataset_filelist(a)
 
-    trainset = MelDataset(training_filelist, h.segment_size, h.n_fft, h.num_mels,
+    trainset = MelDataset(training_filelist, a.input_wavs_dir, h.segment_size, h.n_fft, h.num_mels,
                           h.hop_size, h.win_size, h.sampling_rate, h.fmin, h.fmax, n_cache_reuse=0,
                           shuffle=False if h.num_gpus > 1 else True, fmax_loss=h.fmax_for_loss, device=device,
                           fine_tuning=a.fine_tuning, base_mels_path=a.input_mels_dir)
@@ -87,10 +91,10 @@ def train(rank, a, h):
                               drop_last=True)
 
     if rank == 0:
-        validset = MelDataset(validation_filelist, h.segment_size, h.n_fft, h.num_mels,
+        validset = MelDataset(validation_filelist, a.input_wavs_dir_val, h.segment_size, h.n_fft, h.num_mels,
                               h.hop_size, h.win_size, h.sampling_rate, h.fmin, h.fmax, False, False, n_cache_reuse=0,
                               fmax_loss=h.fmax_for_loss, device=device, fine_tuning=a.fine_tuning,
-                              base_mels_path=a.input_mels_dir)
+                              base_mels_path=a.input_mels_dir_val)
         validation_loader = DataLoader(validset, num_workers=1, shuffle=False,
                                        sampler=None,
                                        batch_size=1,
@@ -114,9 +118,10 @@ def train(rank, a, h):
             if rank == 0:
                 start_b = time.time()
             x, y, _, y_mel = batch
-            x = torch.autograd.Variable(x.to(device, non_blocking=True))
-            y = torch.autograd.Variable(y.to(device, non_blocking=True))
-            y_mel = torch.autograd.Variable(y_mel.to(device, non_blocking=True))
+            # x = torch.autograd.Variable(x.to(device, non_blocking=True))
+            # y = torch.autograd.Variable(y.to(device, non_blocking=True))
+            # y_mel = torch.autograd.Variable(y_mel.to(device, non_blocking=True))
+            x, y, y_mel = x.to(device, non_blocking=True), y.to(device, non_blocking=True), y_mel.to(device, non_blocking=True)
             y = y.unsqueeze(1)
 
             y_g_hat = generator(x)
@@ -231,7 +236,9 @@ def main():
 
     parser.add_argument('--group_name', default=None)
     parser.add_argument('--input_wavs_dir', default='LJSpeech-1.1/wavs')
+    parser.add_argument('--input_wavs_dir_val', default='LJSpeech-1.1/wavs')
     parser.add_argument('--input_mels_dir', default='ft_dataset')
+    parser.add_argument('--input_mels_dir_val', default='ft_dataset')
     parser.add_argument('--input_training_file', default='LJSpeech-1.1/training.txt')
     parser.add_argument('--input_validation_file', default='LJSpeech-1.1/validation.txt')
     parser.add_argument('--checkpoint_path', default='cp_hifigan')
